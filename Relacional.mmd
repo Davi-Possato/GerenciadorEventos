@@ -1,0 +1,106 @@
+erDiagram
+    PESSOA ||--o{ EQUIPE_EVENTO : "atua em"
+    EVENTO ||--o{ EQUIPE_EVENTO : "tem equipe"
+    PROMOTOR ||--o{ EVENTO_PROMOTOR : "promove"
+    EVENTO ||--o{ EVENTO_PROMOTOR : "e promovido por"
+    EVENTO ||--o{ ATIVIDADE : "possui"
+    ATIVIDADE ||--o{ ATIVIDADE_PALESTRANTE : "tem"
+    PESSOA ||--o{ ATIVIDADE_PALESTRANTE : "ministra"
+    ATIVIDADE ||--o{ SESSAO : "realizada em"
+    ESPACO ||--o{ SESSAO : "sedia"
+    ESPACO ||--o{ ESPACO_RECURSO : "possui"
+    RECURSO ||--o{ ESPACO_RECURSO : "disponivel em"
+    SESSAO ||--o{ SESSAO_HISTORICO : "registra mudancas"
+    PESSOA ||--o{ INSCRICAO_EVENTO : "se inscreve"
+    EVENTO ||--o{ INSCRICAO_EVENTO : "recebe"
+    PESSOA ||--o{ INSCRICAO_SESSAO : "se inscreve"
+    SESSAO ||--o{ INSCRICAO_SESSAO : "recebe"
+
+    PESSOA {
+        bigint id PK
+        varchar nome
+        varchar email UK
+        varchar telefone
+        date data_nascimento
+    }
+    PROMOTOR {
+        bigint id PK
+        varchar nome
+        varchar tipo "pessoa, empresa ou organizacao"
+        varchar documento UK
+        varchar email
+    }
+    EVENTO {
+        bigint id PK
+        varchar nome
+        text descricao
+        date data_inicio
+        date data_fim
+    }
+    EVENTO_PROMOTOR {
+        bigint evento_id PK,FK
+        bigint promotor_id PK,FK
+        varchar papel "principal ou co-promotor"
+    }
+    EQUIPE_EVENTO {
+        bigint evento_id PK,FK
+        bigint pessoa_id PK,FK
+        varchar funcao "organizador, apoio..."
+    }
+    ATIVIDADE {
+        bigint id PK
+        bigint evento_id FK
+        varchar titulo
+        text descricao
+        varchar tipo "palestra, workshop..."
+    }
+    ATIVIDADE_PALESTRANTE {
+        bigint atividade_id PK,FK
+        bigint pessoa_id PK,FK
+        varchar papel "palestrante, instrutor..."
+    }
+    ESPACO {
+        bigint id PK
+        varchar nome
+        int capacidade "CHECK maior que 0"
+        varchar localizacao
+    }
+    RECURSO {
+        bigint id PK
+        varchar nome UK
+    }
+    ESPACO_RECURSO {
+        bigint espaco_id PK,FK
+        bigint recurso_id PK,FK
+        int quantidade
+    }
+    SESSAO {
+        bigint id PK
+        bigint atividade_id FK
+        bigint espaco_id FK
+        timestamp inicio
+        timestamp fim "CHECK fim maior que inicio"
+        boolean requer_inscricao
+        int limite_vagas "NULL usa capacidade do espaco"
+        varchar status "agendada, cancelada, realizada"
+    }
+    SESSAO_HISTORICO {
+        bigint id PK
+        bigint sessao_id FK
+        bigint espaco_id_antigo
+        timestamp inicio_antigo
+        timestamp fim_antigo
+        timestamp alterado_em
+    }
+    INSCRICAO_EVENTO {
+        bigint pessoa_id PK,FK
+        bigint evento_id PK,FK
+        varchar status "confirmada ou cancelada"
+        timestamp data_inscricao
+    }
+    INSCRICAO_SESSAO {
+        bigint pessoa_id PK,FK
+        bigint sessao_id PK,FK
+        varchar status "confirmada, lista_espera ou cancelada"
+        timestamp data_inscricao
+    }

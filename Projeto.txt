@@ -1,0 +1,40 @@
+============================================================
+SCC0640 - PROJETO DE BASES DE DADOS
+============================================================
+GRUPO: 
+INTEGRANTES: Aron Costa da Silva Araújo - 16855150
+MODELO UTILIZADO NO OLLAMA:
+============================================================
+1. DESCRICAO FINAL DO SISTEMA
+============================================================
+[Descreva brevemente o sistema efetivamente implementado.]
+============================================================
+2. DECISOES DE PROJETO
+============================================================
+Q1: Promotores (pessoa, empresa ou organização) ficam em uma única tabela PROMOTOR com atributo tipo, ligada a EVENTO por relação N:M com papel, permitindo promoção conjunta.
+
+Q2: Existe uma única tabela PESSOA e o papel é definido na relação (ouvinte na inscrição, palestrante na atividade, organizador no evento), então uma pessoa pode ter vários papéis.
+
+Q3: ATIVIDADE guarda título, descrição e tipo; SESSAO guarda início, fim, espaço e vagas de cada realização, e uma atividade tem uma ou mais sessões.
+
+Q4: Cada edição é um evento independente, sem entidade de série, e edições do mesmo evento são localizadas pelo nome.
+
+Q5: O limite da sessão é limite_vagas, ou a capacidade do espaço se ele for nulo; só sessões com inscrição obrigatória usam inscrição própria, e quando lotada a pessoa entra na lista de espera, com promoção automática em caso de cancelamento.
+
+Q6: O histórico de alterações é preservado (espaço e horário anteriores, sem FK para ESPACO), e sessões em horários sobrepostos no mesmo espaço são impedidas.============================================================
+3. DDL COMPLETO
+============================================================
+[Inserir aqui todo o DDL necessário para criação do banco.]
+============================================================
+4. CONSULTAS
+============================================================
+CONSULTA 1
+OBJETIVO: [uma frase]
+SQL: [consulta]
+CONSULTA 2
+OBJETIVO: [uma frase]
+SQL: [consulta]
+[...]
+============================================================
+FIM DO ARQUIVO
+============================================================
