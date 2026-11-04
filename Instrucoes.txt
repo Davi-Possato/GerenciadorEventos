@@ -1,0 +1,75 @@
+INSTRUCOES DE INSTALACAO E EXECUCAO - SCC0640 - SISTEMA DE GESTAO DE EVENTOS E ESPACOS
+
+
+INTEGRANTES
+
+Aron Costa da Silva Araújo - 16855150
+Richard Willian da Silva - 16827381
+Davi Possato Virtudes - 16861780
+
+
+REQUISITOS DE SOFTWARE
+
+- PostgreSQL 14 ou superior
+- Python 3.11 ou superior
+- Ollama (https://ollama.com) com o modelo qwen3:8b baixado
+
+
+CRIACAO DA BASE
+
+1. Crie o banco de dados:
+   psql -U postgres -c "CREATE DATABASE eventos;"
+
+2. Abra o arquivo Projeto.txt, copie todo o texto que fica entre os titulos
+   "3. DDL COMPLETO" e "4. CONSULTAS" (sem incluir esses dois titulos) e salve
+   em um arquivo chamado ddl.sql.
+
+3. Execute o DDL no banco criado:
+   psql -U postgres -d eventos -f ddl.sql
+
+   (Alternativa: colar o mesmo texto diretamente no psql ou no pgAdmin
+   conectado ao banco eventos.)
+
+
+EXECUCAO DO DML
+
+Com o DDL ja executado, rode:
+   psql -U postgres -d eventos -f DML.sql
+
+O DML ja define o search_path para o schema eventmanager e executa dentro de uma transacao.
+
+
+EXECUCAO DO PROTOTIPO
+
+1. Baixe o modelo no Ollama (com o Ollama em execucao):
+   ollama pull qwen3:8b
+
+2. Extraia o arquivo Prototipo.zip. A pasta Prototipo e o arquivo Projeto.txt
+   devem ficar no mesmo diretorio (Projeto.txt um nivel acima da pasta Prototipo).
+
+3. Entre na pasta Prototipo e instale as dependencias:
+   python -m pip install -r requirements.txt
+
+4. Edite apenas o arquivo config.json, ajustando se necessario:
+   - database: host, port, dbname, user e password do PostgreSQL
+   - ollama: host e model
+
+5. Execute:
+   python main.py
+
+O menu permite executar as 5 consultas do projeto (opcoes 1 a 5) ou digitar
+uma pergunta em linguagem natural (opcao 6), que e convertida em SQL pelo
+modelo do Ollama e executada no banco.
+
+
+MODELO UTILIZADO NO OLLAMA
+
+qwen3:8b
+
+
+LIMITACOES
+
+- O SQL gerado pelo modelo a partir da pergunta em linguagem natural nao e validado
+  antes da execucao; a qualidade do resultado depende do modelo utilizado.
+- Em caso de SQL invalido, a mensagem de erro do PostgreSQL e exibida ao usuario.
+- Nenhuma funcionalidade pendente.
