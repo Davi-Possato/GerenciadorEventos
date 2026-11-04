@@ -1,16 +1,17 @@
-============================================================
 SCC0640 - PROJETO DE BASES DE DADOS
-============================================================
-GRUPO: 
-INTEGRANTES: Aron Costa da Silva Araújo - 16855150
-MODELO UTILIZADO NO OLLAMA:
-============================================================
+
+GRUPO: Gerenciador de Eventos 
+INTEGRANTES: Aron Costa da Silva Araújo - 16855150; Richard Willian da Silva - 16827381; Davi Possato Virtudes - 16861780
+MODELO UTILIZADO NO OLLAMA: qwen3:8b
+
+
 1. DESCRICAO FINAL DO SISTEMA
-============================================================
-[Descreva brevemente o sistema efetivamente implementado.]
-============================================================
+
+Sistema de gestao de eventos e espacos em PostgreSQL (schema eventmanager). Cadastra promotores, eventos, atividades, sessoes (data, horario e espaco), espacos e recursos, pessoas com varios papeis (equipe, palestrante, ouvinte), inscricoes em eventos e em sessoes com limite de vagas e lista de espera, e historico de alteracoes de sessoes. Quatro triggers controlam vagas, promocao da lista de espera, conflito de espaco e historico. O prototipo em Python executa 5 consultas e converte perguntas em linguagem natural para SQL usando o Ollama.
+
+
 2. DECISOES DE PROJETO
-============================================================
+
 Q1: Promotores (pessoa, empresa ou organização) ficam em uma única tabela PROMOTOR com atributo tipo, ligada a EVENTO por relação N:M com papel, permitindo promoção conjunta.
 
 Q2: Existe uma única tabela PESSOA e o papel é definido na relação (ouvinte na inscrição, palestrante na atividade, organizador no evento), então uma pessoa pode ter vários papéis.
@@ -21,20 +22,373 @@ Q4: Cada edição é um evento independente, sem entidade de série, e edições
 
 Q5: O limite da sessão é limite_vagas, ou a capacidade do espaço se ele for nulo; só sessões com inscrição obrigatória usam inscrição própria, e quando lotada a pessoa entra na lista de espera, com promoção automática em caso de cancelamento.
 
-Q6: O histórico de alterações é preservado (espaço e horário anteriores, sem FK para ESPACO), e sessões em horários sobrepostos no mesmo espaço são impedidas.============================================================
+Q6: O histórico de alterações é preservado (espaço e horário anteriores, sem FK para ESPACO), e sessões em horários sobrepostos no mesmo espaço são impedidas.
+
+
 3. DDL COMPLETO
-============================================================
-[Inserir aqui todo o DDL necessário para criação do banco.]
-============================================================
+
+CREATE SCHEMA IF NOT EXISTS eventmanager;
+
+CREATE TABLE IF NOT EXISTS eventmanager.promotor (
+    id        BIGINT GENERATED ALWAYS AS IDENTITY,
+    nome      VARCHAR(255) NOT NULL,
+    tipo      VARCHAR(15)  NOT NULL,
+    documento VARCHAR(14)  NOT NULL,
+    email     VARCHAR(255) NOT NULL,
+
+    CONSTRAINT promotor_pk           PRIMARY KEY (id),
+    CONSTRAINT promotor_documento_uk UNIQUE (documento),
+    CONSTRAINT promotor_tipo_ck      CHECK (tipo IN ('pessoa', 'empresa', 'organizacao'))
+);
+
+CREATE TABLE IF NOT EXISTS eventmanager.evento (
+    id          BIGINT GENERATED ALWAYS AS IDENTITY,
+    nome        VARCHAR(255) NOT NULL,
+    descricao   TEXT         NOT NULL,
+    data_inicio DATE         NOT NULL,
+    data_fim    DATE,
+
+    CONSTRAINT evento_pk      PRIMARY KEY (id),
+    CONSTRAINT evento_data_ck CHECK (data_fim IS NULL OR data_fim >= data_inicio)
+);
+
+CREATE TABLE IF NOT EXISTS eventmanager.pessoa (
+    id              BIGINT GENERATED ALWAYS AS IDENTITY,
+    nome            VARCHAR(255) NOT NULL,
+    email           VARCHAR(255) NOT NULL,
+    telefone        VARCHAR(11)  NOT NULL,
+    data_nascimento DATE         NOT NULL,
+
+    CONSTRAINT pessoa_pk          PRIMARY KEY (id),
+    CONSTRAINT pessoa_email_uk    UNIQUE (email),
+    CONSTRAINT pessoa_telefone_ck CHECK (telefone ~ '^[0-9]{10,11}$'),
+    CONSTRAINT pessoa_nasc_ck     CHECK (data_nascimento <= CURRENT_DATE)
+);
+
+CREATE TABLE IF NOT EXISTS eventmanager.espaco (
+    id          BIGINT GENERATED ALWAYS AS IDENTITY,
+    nome        VARCHAR(255) NOT NULL,
+    capacidade  INT          NOT NULL,
+    localizacao VARCHAR(255),
+
+    CONSTRAINT espaco_pk            PRIMARY KEY (id),
+    CONSTRAINT espaco_capacidade_ck CHECK (capacidade > 0)
+);
+
+CREATE TABLE IF NOT EXISTS eventmanager.recurso (
+    id   BIGINT GENERATED ALWAYS AS IDENTITY,
+    nome VARCHAR(255) NOT NULL,
+
+    CONSTRAINT recurso_pk      PRIMARY KEY (id),
+    CONSTRAINT recurso_nome_uk UNIQUE (nome)
+);
+
+CREATE TABLE IF NOT EXISTS eventmanager.evento_promotor (
+    evento_id   BIGINT      NOT NULL,
+    promotor_id BIGINT      NOT NULL,
+    papel       VARCHAR(40) NOT NULL,
+
+    CONSTRAINT evento_promotor_pk          PRIMARY KEY (evento_id, promotor_id),
+    CONSTRAINT evento_promotor_papel_ck    CHECK (papel IN ('principal', 'co-promotor')),
+    CONSTRAINT evento_promotor_evento_fk   FOREIGN KEY (evento_id)
+        REFERENCES eventmanager.evento (id) ON DELETE CASCADE,
+    CONSTRAINT evento_promotor_promotor_fk FOREIGN KEY (promotor_id)
+        REFERENCES eventmanager.promotor (id) ON DELETE RESTRICT
+);
+
+CREATE TABLE IF NOT EXISTS eventmanager.equipe_evento (
+    evento_id BIGINT      NOT NULL,
+    pessoa_id BIGINT      NOT NULL,
+    funcao    VARCHAR(40) NOT NULL,
+
+    CONSTRAINT equipe_evento_pk        PRIMARY KEY (evento_id, pessoa_id),
+    CONSTRAINT equipe_evento_evento_fk FOREIGN KEY (evento_id)
+        REFERENCES eventmanager.evento (id) ON DELETE CASCADE,
+    CONSTRAINT equipe_evento_pessoa_fk FOREIGN KEY (pessoa_id)
+        REFERENCES eventmanager.pessoa (id) ON DELETE RESTRICT
+);
+
+CREATE TABLE IF NOT EXISTS eventmanager.atividade (
+    id        BIGINT GENERATED ALWAYS AS IDENTITY,
+    evento_id BIGINT       NOT NULL,
+    titulo    VARCHAR(255) NOT NULL,
+    descricao TEXT,
+    tipo      VARCHAR(50)  NOT NULL,
+
+    CONSTRAINT atividade_pk        PRIMARY KEY (id),
+    CONSTRAINT atividade_evento_fk FOREIGN KEY (evento_id)
+        REFERENCES eventmanager.evento (id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS eventmanager.atividade_palestrante (
+    atividade_id BIGINT       NOT NULL,
+    pessoa_id    BIGINT       NOT NULL,
+    papel        VARCHAR(255) NOT NULL,
+
+    CONSTRAINT atividade_palestrante_pk           PRIMARY KEY (atividade_id, pessoa_id),
+    CONSTRAINT atividade_palestrante_atividade_fk FOREIGN KEY (atividade_id)
+        REFERENCES eventmanager.atividade (id) ON DELETE CASCADE,
+    CONSTRAINT atividade_palestrante_pessoa_fk    FOREIGN KEY (pessoa_id)
+        REFERENCES eventmanager.pessoa (id) ON DELETE RESTRICT
+);
+
+CREATE TABLE IF NOT EXISTS eventmanager.sessao (
+    id               BIGINT GENERATED ALWAYS AS IDENTITY,
+    atividade_id     BIGINT      NOT NULL,
+    espaco_id        BIGINT      NOT NULL,
+    inicio           TIMESTAMP   NOT NULL,
+    fim              TIMESTAMP   NOT NULL,
+    requer_inscricao BOOLEAN     NOT NULL DEFAULT FALSE,
+    limite_vagas     INT,
+    status           VARCHAR(20) NOT NULL DEFAULT 'agendada',
+
+    CONSTRAINT sessao_pk           PRIMARY KEY (id),
+    CONSTRAINT sessao_periodo_ck   CHECK (fim > inicio),
+    CONSTRAINT sessao_vagas_ck     CHECK (limite_vagas IS NULL OR limite_vagas > 0),
+    CONSTRAINT sessao_status_ck    CHECK (status IN ('agendada', 'cancelada', 'realizada')),
+    CONSTRAINT sessao_atividade_fk FOREIGN KEY (atividade_id)
+        REFERENCES eventmanager.atividade (id) ON DELETE CASCADE,
+    CONSTRAINT sessao_espaco_fk    FOREIGN KEY (espaco_id)
+        REFERENCES eventmanager.espaco (id) ON DELETE RESTRICT
+);
+
+CREATE TABLE IF NOT EXISTS eventmanager.sessao_historico (
+    id               BIGINT GENERATED ALWAYS AS IDENTITY,
+    sessao_id        BIGINT    NOT NULL,
+    espaco_id_antigo BIGINT    NOT NULL,
+    inicio_antigo    TIMESTAMP NOT NULL,
+    fim_antigo       TIMESTAMP NOT NULL,
+    alterado_em      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT sessao_historico_pk         PRIMARY KEY (id),
+    CONSTRAINT sessao_historico_periodo_ck CHECK (fim_antigo > inicio_antigo),
+    CONSTRAINT sessao_historico_sessao_fk  FOREIGN KEY (sessao_id)
+        REFERENCES eventmanager.sessao (id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS eventmanager.espaco_recurso (
+    espaco_id  BIGINT NOT NULL,
+    recurso_id BIGINT NOT NULL,
+    quantidade INT    NOT NULL DEFAULT 1,
+
+    CONSTRAINT espaco_recurso_pk            PRIMARY KEY (espaco_id, recurso_id),
+    CONSTRAINT espaco_recurso_quantidade_ck CHECK (quantidade > 0),
+    CONSTRAINT espaco_recurso_espaco_fk     FOREIGN KEY (espaco_id)
+        REFERENCES eventmanager.espaco (id) ON DELETE CASCADE,
+    CONSTRAINT espaco_recurso_recurso_fk    FOREIGN KEY (recurso_id)
+        REFERENCES eventmanager.recurso (id) ON DELETE RESTRICT
+);
+
+CREATE TABLE IF NOT EXISTS eventmanager.inscricao_evento (
+    pessoa_id      BIGINT      NOT NULL,
+    evento_id      BIGINT      NOT NULL,
+    status         VARCHAR(15) NOT NULL DEFAULT 'confirmada',
+    data_inscricao TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT inscricao_evento_pk        PRIMARY KEY (pessoa_id, evento_id),
+    CONSTRAINT inscricao_evento_status_ck CHECK (status IN ('confirmada', 'cancelada')),
+    CONSTRAINT inscricao_evento_pessoa_fk FOREIGN KEY (pessoa_id)
+        REFERENCES eventmanager.pessoa (id) ON DELETE CASCADE,
+    CONSTRAINT inscricao_evento_evento_fk FOREIGN KEY (evento_id)
+        REFERENCES eventmanager.evento (id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS eventmanager.inscricao_sessao (
+    pessoa_id      BIGINT      NOT NULL,
+    sessao_id      BIGINT      NOT NULL,
+    status         VARCHAR(15) NOT NULL DEFAULT 'confirmada',
+    data_inscricao TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT inscricao_sessao_pk        PRIMARY KEY (pessoa_id, sessao_id),
+    CONSTRAINT inscricao_sessao_status_ck CHECK (status IN ('confirmada', 'lista_espera', 'cancelada')),
+    CONSTRAINT inscricao_sessao_pessoa_fk FOREIGN KEY (pessoa_id)
+        REFERENCES eventmanager.pessoa (id) ON DELETE CASCADE,
+    CONSTRAINT inscricao_sessao_sessao_fk FOREIGN KEY (sessao_id)
+        REFERENCES eventmanager.sessao (id) ON DELETE CASCADE
+);
+
+CREATE OR REPLACE FUNCTION eventmanager.fn_inscricao_sessao_vagas()
+RETURNS trigger AS $$
+DECLARE
+    v_requer    BOOLEAN;
+    v_limite    INT;
+    v_ocupadas  INT;
+BEGIN
+    SELECT s.requer_inscricao, COALESCE(s.limite_vagas, e.capacidade)
+      INTO v_requer, v_limite
+      FROM eventmanager.sessao s
+      JOIN eventmanager.espaco e ON e.id = s.espaco_id
+     WHERE s.id = NEW.sessao_id
+       FOR UPDATE OF s;
+
+    IF NOT v_requer THEN
+        RAISE EXCEPTION 'A sessao % nao exige inscricao especifica', NEW.sessao_id;
+    END IF;
+
+    IF NEW.status = 'confirmada' THEN
+        SELECT COUNT(*) INTO v_ocupadas
+          FROM eventmanager.inscricao_sessao
+         WHERE sessao_id = NEW.sessao_id
+           AND status = 'confirmada'
+           AND pessoa_id <> NEW.pessoa_id;
+
+        IF v_ocupadas >= v_limite THEN
+            NEW.status := 'lista_espera';
+        END IF;
+    END IF;
+
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_inscricao_sessao_vagas
+BEFORE INSERT OR UPDATE ON eventmanager.inscricao_sessao
+FOR EACH ROW EXECUTE FUNCTION eventmanager.fn_inscricao_sessao_vagas();
+
+CREATE OR REPLACE FUNCTION eventmanager.fn_promover_lista_espera()
+RETURNS trigger AS $$
+BEGIN
+    UPDATE eventmanager.inscricao_sessao
+       SET status = 'confirmada'
+     WHERE (pessoa_id, sessao_id) IN (
+            SELECT pessoa_id, sessao_id
+              FROM eventmanager.inscricao_sessao
+             WHERE sessao_id = NEW.sessao_id
+               AND status = 'lista_espera'
+             ORDER BY data_inscricao, pessoa_id
+             LIMIT 1);
+    RETURN NULL;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_promover_lista_espera
+AFTER UPDATE OF status ON eventmanager.inscricao_sessao
+FOR EACH ROW
+WHEN (OLD.status = 'confirmada' AND NEW.status = 'cancelada')
+EXECUTE FUNCTION eventmanager.fn_promover_lista_espera();
+
+CREATE OR REPLACE FUNCTION eventmanager.fn_sessao_sem_conflito()
+RETURNS trigger AS $$
+BEGIN
+    IF NEW.status <> 'cancelada' AND EXISTS (
+        SELECT 1
+          FROM eventmanager.sessao s
+         WHERE s.espaco_id = NEW.espaco_id
+           AND s.status <> 'cancelada'
+           AND s.id <> COALESCE(NEW.id, -1)
+           AND NEW.inicio < s.fim
+           AND NEW.fim > s.inicio
+    ) THEN
+        RAISE EXCEPTION 'Conflito: o espaco % ja possui sessao nesse horario', NEW.espaco_id;
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_sessao_sem_conflito
+BEFORE INSERT OR UPDATE OF espaco_id, inicio, fim, status ON eventmanager.sessao
+FOR EACH ROW EXECUTE FUNCTION eventmanager.fn_sessao_sem_conflito();
+
+CREATE OR REPLACE FUNCTION eventmanager.fn_sessao_historico()
+RETURNS trigger AS $$
+BEGIN
+    INSERT INTO eventmanager.sessao_historico
+           (sessao_id, espaco_id_antigo, inicio_antigo, fim_antigo)
+    VALUES (OLD.id, OLD.espaco_id, OLD.inicio, OLD.fim);
+    RETURN NULL;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_sessao_historico
+AFTER UPDATE ON eventmanager.sessao
+FOR EACH ROW
+WHEN (OLD.espaco_id IS DISTINCT FROM NEW.espaco_id
+   OR OLD.inicio    IS DISTINCT FROM NEW.inicio
+   OR OLD.fim       IS DISTINCT FROM NEW.fim)
+EXECUTE FUNCTION eventmanager.fn_sessao_historico();
+
+
 4. CONSULTAS
-============================================================
+
 CONSULTA 1
-OBJETIVO: [uma frase]
-SQL: [consulta]
+OBJETIVO: Listar todas as sessoes com o evento, a atividade, o espaco e o horario em que ocorrem.
+SQL:
+SELECT ev.nome AS evento, a.titulo AS atividade, s.id AS sessao_id,
+       esp.nome AS espaco, s.inicio, s.fim, s.status
+FROM eventmanager.sessao s
+JOIN eventmanager.atividade a ON a.id = s.atividade_id
+JOIN eventmanager.evento ev ON ev.id = a.evento_id
+JOIN eventmanager.espaco esp ON esp.id = s.espaco_id
+ORDER BY ev.nome, s.inicio;
+
 CONSULTA 2
-OBJETIVO: [uma frase]
-SQL: [consulta]
-[...]
-============================================================
+OBJETIVO: Mostrar, para cada evento, quantas inscricoes confirmadas ele possui e quantas atividades oferece.
+SQL:
+SELECT ev.id, ev.nome,
+       (SELECT COUNT(*) FROM eventmanager.inscricao_evento ie
+         WHERE ie.evento_id = ev.id AND ie.status = 'confirmada') AS inscritos_confirmados,
+       (SELECT COUNT(*) FROM eventmanager.atividade a
+         WHERE a.evento_id = ev.id) AS total_atividades
+FROM eventmanager.evento ev
+ORDER BY inscritos_confirmados DESC;
+
+CONSULTA 3
+OBJETIVO: Listar as pessoas confirmadas em um evento que tambem estao confirmadas em todas as sessoes desse evento que exigem inscricao especifica.
+SQL:
+SELECT ev.id AS evento_id, p.id AS pessoa_id, p.nome
+FROM eventmanager.evento ev
+JOIN eventmanager.inscricao_evento ie ON ie.evento_id = ev.id AND ie.status = 'confirmada'
+JOIN eventmanager.pessoa p ON p.id = ie.pessoa_id
+WHERE EXISTS (
+        SELECT 1 FROM eventmanager.atividade a
+        JOIN eventmanager.sessao s ON s.atividade_id = a.id
+        WHERE a.evento_id = ev.id AND s.requer_inscricao)
+  AND NOT EXISTS (
+        SELECT 1 FROM eventmanager.atividade a
+        JOIN eventmanager.sessao s ON s.atividade_id = a.id
+        WHERE a.evento_id = ev.id AND s.requer_inscricao
+          AND NOT EXISTS (
+                SELECT 1 FROM eventmanager.inscricao_sessao isn
+                WHERE isn.sessao_id = s.id AND isn.pessoa_id = p.id
+                  AND isn.status = 'confirmada'))
+ORDER BY ev.id, p.nome;
+
+CONSULTA 4
+OBJETIVO: Ranquear, em cada evento, as tres sessoes com maior taxa de ocupacao (confirmadas dividido pela capacidade do espaco).
+SQL:
+WITH ocupacao AS (
+    SELECT a.evento_id, s.id AS sessao_id, a.titulo,
+           COUNT(isn.pessoa_id) FILTER (WHERE isn.status = 'confirmada') AS confirmadas,
+           esp.capacidade
+    FROM eventmanager.sessao s
+    JOIN eventmanager.atividade a ON a.id = s.atividade_id
+    JOIN eventmanager.espaco esp ON esp.id = s.espaco_id
+    LEFT JOIN eventmanager.inscricao_sessao isn ON isn.sessao_id = s.id
+    GROUP BY a.evento_id, s.id, a.titulo, esp.capacidade
+),
+ranking AS (
+    SELECT o.*,
+           ROUND(o.confirmadas::numeric / o.capacidade, 4) AS taxa_ocupacao,
+           ROW_NUMBER() OVER (PARTITION BY o.evento_id
+                              ORDER BY o.confirmadas::numeric / o.capacidade DESC, o.sessao_id) AS posicao
+    FROM ocupacao o
+)
+SELECT evento_id, sessao_id, titulo, confirmadas, capacidade, taxa_ocupacao, posicao
+FROM ranking
+WHERE posicao <= 3
+ORDER BY evento_id, posicao;
+
+CONSULTA 5
+OBJETIVO: Listar os espacos que nunca sediaram nenhuma sessao, com sua capacidade e seus recursos.
+SQL:
+SELECT esp.id, esp.nome, esp.capacidade,
+       COALESCE(string_agg(r.nome, ', ' ORDER BY r.nome), 'nenhum') AS recursos
+FROM eventmanager.espaco esp
+LEFT JOIN eventmanager.espaco_recurso er ON er.espaco_id = esp.id
+LEFT JOIN eventmanager.recurso r ON r.id = er.recurso_id
+WHERE NOT EXISTS (SELECT 1 FROM eventmanager.sessao s WHERE s.espaco_id = esp.id)
+GROUP BY esp.id, esp.nome, esp.capacidade
+ORDER BY esp.id;
+
+
 FIM DO ARQUIVO
-============================================================
